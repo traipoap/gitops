@@ -16,4 +16,4 @@ spec:
     hostname: "flux-web.traipoap.com"
     allowedRoutes:
       namespaces:
-        from: "flux-system"
+        from: "All"
