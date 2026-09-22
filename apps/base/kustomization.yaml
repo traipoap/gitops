@@ -9,7 +9,6 @@ resources:
   - frontend-deployment.yaml
   - frontend-service.yaml
   - configmap.yaml
-  - gateway.yaml
   - httproute.yaml
   - backend-pvc.yaml
   - frontend-tls.yaml
