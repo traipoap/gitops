@@ -2,7 +2,6 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../base
-
 images:
   - name: ghcr.io/traipoap/backend
     newTag: "0.0.23" # {"$imagepolicy": "production:backend:tag"}
@@ -10,8 +9,6 @@ images:
     newTag: "0.0.27" # {"$imagepolicy": "production:frontend:tag"}
 
 patches:
-  - path: patch-cert.yaml
-  - path: patch-gateway.yaml
   - path: patch-config.yaml
   - path: patch-httproute.yaml
 

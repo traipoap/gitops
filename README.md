@@ -33,7 +33,7 @@ flux-system (bootstrap)
 
 ```
 ├── apps/
-│   ├── base/                  # Shared manifests (deployments, services, gateway, TLS)
+│   ├── base/                  # Shared manifests (deployments, services, routing)
 │   ├── staging/               # Staging overlay (image tags, patches)
 │   └── production/            # Production overlay
 ├── clusters/
@@ -46,7 +46,7 @@ flux-system (bootstrap)
 │   └── production/            # Same structure, different path
 ├── infrastructure/
 │   ├── controllers/           # Helm-managed: cert-manager, external-secrets, kyverno, flux-web
-│   ├── configs/               # Plain YAML: issuers, external secrets, kyverno policies
+│   ├── configs/               # Plain YAML: issuers, external secrets, kyverno, gateway, TLS
 │   └── services/              # Secret-dependent: vector, quickwit, nfs
 └── scripts/validate.sh        # flux-schema validation
 ```
@@ -56,9 +56,9 @@ flux-system (bootstrap)
 | Layer | Path | Contains |
 |-------|------|----------|
 | Base controllers | `infrastructure/controllers/` | cert-manager, external-secrets, kyverno (Helm), flux-web, namespaces, Istio addons (Prometheus, Grafana, Kiali) |
-| Configs | `infrastructure/configs/` | ClusterIssuer, ExternalSecrets, Kyverno policy, Quickwit index job |
+| Configs | `infrastructure/configs/` | ClusterIssuer, ExternalSecrets, Kyverno policy, Quickwit index job, Gateway, TLS cert, Flux Web HTTPRoute |
 | Services | `infrastructure/services/` | Vector, Quickwit, NFS provisioner (HelmReleases with `valuesFrom` secrets) |
-| App | `apps/base/` | Deployments, Services, Gateway, HTTPRoute, TLS cert, ContainerLimits, ExternalSecrets for app |
+| App | `apps/base/` | Deployments, Services, HTTPRoute, ContainerLimits, ExternalSecrets for app |
 | Per-env | `clusters/<env>/` | Flux bootstrap + Kustomizations + Image Automation |
 
 ---

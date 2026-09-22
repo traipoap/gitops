@@ -3,3 +3,4 @@ kind: Kustomization
 resources:
   - gateway.yaml
   - flux-web-httproute.yaml
+  - app-traipoap-com-tls.yaml

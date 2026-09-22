@@ -9,7 +9,6 @@ images:
     newTag: "0.0.27" # {"$imagepolicy": "staging:frontend:tag"}
 
 patches:
-  - path: patch-cert.yaml
   - path: patch-config.yaml
   - path: patch-httproute.yaml
 

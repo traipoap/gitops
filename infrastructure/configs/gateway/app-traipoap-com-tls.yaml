@@ -1,13 +1,11 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: frontend-tls
+  name: app-traipoap-com-tls
 spec:
   secretName: app-traipoap-com-tls
   dnsNames:
   - "app.traipoap.com"
-  # Name ref: points to the ClusterIssuer "letsencrypt-cloudflare",
-  # declared in this same directory (letsencrypt-dns01-cloudflare.yaml).
   issuerRef:
     name: cluster-ca-issuer
     kind: ClusterIssuer
