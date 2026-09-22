@@ -6,6 +6,7 @@ metadata:
 spec:
   parentRefs:
   - name: app-gateway
+    namespace: istio-system
   hostnames:
   - "flux-web.traipoap.com"
   rules:

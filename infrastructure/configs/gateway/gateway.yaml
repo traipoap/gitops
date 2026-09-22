@@ -10,7 +10,7 @@ metadata:
 spec:
   gatewayClassName: istio
   listeners:
-  - name: http
+  - name: http-fluxweb
     protocol: HTTP
     port: 9080
     hostname: "flux-web.traipoap.com"
@@ -18,7 +18,7 @@ spec:
       namespaces:
         from: "All"
 
-  - name: http
+  - name: http-app
     protocol: HTTP
     port: 80
     hostname: "app.traipoap.com"
