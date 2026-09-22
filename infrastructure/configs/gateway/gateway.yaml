@@ -12,7 +12,7 @@ spec:
   listeners:
   - name: http-fluxweb
     protocol: HTTP
-    port: 9080
+    port: 80
     hostname: "flux-web.traipoap.com"
     allowedRoutes:
       namespaces:
