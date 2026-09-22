@@ -1,481 +1,194 @@
-# Fleet Infra — GitOps Repository
+# GitOps — Flux CD
 
-> GitOps source of truth for a K3s Kubernetes cluster. Managed by **Flux CD** — all infrastructure and application state is declared in Git and continuously reconciled.
+> All cluster state lives in Git. Flux CD reconciles it continuously.
 
-Part of the [gitops-platform](https://github.com/traipoap/gitops-platform) project. This repo contains only the Kubernetes manifests and Flux CRs; Terraform, Ansible, CI/CD, and application code live in the main repo.
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         Git (this repo — main branch)                   │
-└──────────────────────────────────┬──────────────────────────────────────┘
-                                   │  flux watches (1m interval)
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                    Flux CD (flux-system namespace)                      │
-│                                                                         │
-│  GitRepository: flux-system                                             │
-│       │                                                                 │
-│       ▼                                                                 │
-│  ArtifactGenerator: flux-system                                         │
-│       │  packages into:                                                 │
-│       │  ├── infrastructure  (infrastructure/**)                        │
-│       │  └── apps            (apps/base/** + apps/staging/**)           │
-│       │                                                                 │
-│       ▼                                                                 │
-│  Kustomization: infra-controllers  ──►  ./controllers                   │
-│  Kustomization: infra-configs      ──►  ./configs                       │
-│  Kustomization: apps               ──►  ./staging                       │
-│  Kustomization: image-automation   ──►  clusters/<env>/image-automation │
-│                                                                         │
-│  Controllers (via HelmReleases):                                        │
-│  ├── cert-manager          (jetstack OCI)                               │
-│  ├── external-secrets      (AWS SecretsManager)                         │
-│  ├── vector                (log shipper)                                │
-│  ├── quickwit              (log store)                                  │
-│  ├── nfs-subdir-external   (NFS StorageClass)                           │
-│  ├── flux-web              (GitOps dashboard, flux-operator)            │
-│  └── kyverno               (policy engine)                              │
-│                                                                         │
-│  Image Automation (ImageUpdateAutomation):                              │
-│  ├── backend   (ghcr.io/traipoap/backend → apps/staging)                │
-│  └── frontend  (ghcr.io/traipoap/frontend → apps/staging)               │
-└──────────────────────────────────┬──────────────────────────────────────┘
-                                   │  reconcile
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        K3s Cluster (HA, 3 masters)                      │
-│                                                                         │
-│  istio-system/       Gateway API, Prometheus, Grafana, Kiali            │
-│  logging/            Vector + Quickwit (log pipeline)                   │
-│  networking/         NFS Subdir External Provisioner                    │
-│  security/           cert-manager, External Secrets, Kyverno            │
-│  <env>/             App: frontend, backend, Gateway, HTTPRoute         │
-│                      Image Automation CRDs                              │
-│  flux-system/        Flux controllers, Flux Web (flux-operator)         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### Key Design: ArtifactGenerator + ExternalArtifact
-
-Flux's **ArtifactGenerator** packages subdirectories into artifacts, and Kustomizations reference them via `ExternalArtifact` source kind. This decouples the manifest layout from the Flux reconciliation path:
-
-```
-infrastructure/**  ──►  Artifact: infrastructure  ──►  Kustomization: infra-controllers
-                                              ├──►  Kustomization: infra-configs
-                                              └──►  Kustomization: infra-services
-apps/base/**       ──►  Artifact: apps          ──►  Kustomization: apps
-apps/staging/**    ──┘
-```
-
-This allows:
-- **Shared manifests** in `apps/base/` (deployments, services, gateway)
-- **Environment overlays** in `apps/staging/` (patches, resource overrides)
-- **Clean separation** of infrastructure controllers (Helm) from configs (plain YAML)
-- **Image Automation** updating `apps/staging/` without touching `apps/base/`
-- **Per-cluster Flux CRs** (bootstrap, Kustomizations, Image Automation) in `clusters/<env>/`
+Part of [traipoap](https://github.com/traipoap) — the GitOps repo for a K3s cluster. Infrastructure as Code (Terraform + Ansible), CI/CD, and app code live in the main repo.
 
 ---
 
-## Repository Structure
+## How It Works
 
 ```
-.
-├── apps/                            # Application manifests (shared + per-env overlays)
-│   ├── base/                        # Shared: deployments, services, gateway, routing
-│   │   ├── kustomization.yaml
-│   │   ├── namespace.yaml           # <env> (Istio ambient mode)
-│   │   ├── configmap.yaml           # Shared env config
-│   │   ├── backend-deployment.yaml  # Go API server (port 8080)
-│   │   ├── backend-service.yaml     # ClusterIP → 8080
-│   │   ├── backend-pvc.yaml         # Persistent storage
-│   │   ├── frontend-deployment.yaml # Astro frontend (port 4321)
-│   │   ├── frontend-service.yaml    # ClusterIP → 4321
-│   │   ├── gateway.yaml             # Istio Gateway (HTTP + HTTPS, TLS)
-│   │   ├── httproute.yaml           # Path-based routing rules
-│   │   └── ingress.yaml             # Legacy fallback
-│   ├── staging/                     # Staging overlay (patches, image tags)
-│   │   └── kustomization.yaml       # Extends ../base
-│   └── production/                  # Production overlay (patches, image tags)
-│       └── kustomization.yaml       # Extends ../base
-│
+Git (main) ──► Flux CD ──► K3s Cluster
+```
+
+1. **Flux watches this repo** (every 1 minute).
+2. **ArtifactGenerator** packages `infrastructure/` and `apps/` into artifacts.
+3. **Kustomizations** apply them in order:
+
+```
+flux-system (bootstrap)
+  └► infra-controllers   (cert-manager, external-secrets, kyverno, flux-web, namespaces)
+       └► infra-configs  (issuers, external secrets, quickwit index job)
+            └► infra-services  (vector, quickwit, nfs)
+                 └► apps  (frontend + backend deployments)
+  └► image-automation  (auto-updates image tags → commit → Flux deploys)
+```
+
+4. **Image Automation**: when a new image lands on GHCR, Flux detects it, updates the tag in `apps/staging/kustomization.yaml`, and commits as `fluxcdbot`. No manual `kubectl set image`.
+
+---
+
+## Repository Layout
+
+```
+├── apps/
+│   ├── base/                  # Shared manifests (deployments, services, gateway, TLS)
+│   ├── staging/               # Staging overlay (image tags, patches)
+│   └── production/            # Production overlay
 ├── clusters/
-│   ├── staging/                     # Per-cluster Flux CRs (staging)
-│   │   ├── flux-system/             # Flux bootstrap
-│   │   │   ├── kustomization.yaml   # Bundles components + sync
-│   │   │   ├── gotk-components.yaml # Flux CRDs + controllers
-│   │   │   └── gotk-sync.yaml       # GitRepository + Kustomization (→ ./clusters/staging)
-│   │   ├── image-automation/        # Flux Image Automation (staging only)
-│   │   │   ├── kustomization.yaml
-│   │   │   ├── backend-registry.yaml   # ImageRepository
-│   │   │   ├── backend-policy.yaml     # ImagePolicy (semver)
-│   │   │   ├── backend-automation.yaml # ImageUpdateAutomation (→ ./apps/staging)
-│   │   │   ├── frontend-registry.yaml
-│   │   │   ├── frontend-policy.yaml
-│   │   │   └── frontend-automation.yaml
-│   │   ├── apps.yaml                # Kustomization: apps (dependsOn: infra-configs → ./staging)
-│   │   ├── infrastructure.yaml      # Kustomizations: infra-controllers + infra-configs + image-automation
-│   │   └── artifacts.yaml           # ArtifactGenerator (packages infra + apps)
-│   └── production/                  # Per-cluster Flux CRs (production)
-│       ├── flux-system/             # Flux bootstrap (gotk-components + gotk-sync → ./clusters/production)
-│       ├── apps.yaml                # Kustomization: apps (ExternalArtifact → ./production)
-│       ├── infrastructure.yaml      # Kustomizations: infra-controllers + infra-configs
-│       └── artifacts.yaml           # ArtifactGenerator (packages infra + apps)
-│
-├── infrastructure/                  # Platform components
-│   ├── kustomization.yaml           # Aggregates: controllers + services + configs
-│   ├── configs/                     # Plain YAML configs (no Helm)
-│   │   ├── kustomization.yaml
-│   │   ├── cert-manager/            # ClusterIssuers (CA, Let's Encrypt, wildcard)
-│   │   │   ├── kustomization.yaml
-│   │   │   ├── ca-issuer.yaml
-│   │   │   ├── letsencrypt-dns01-cloudflare.yaml
-│   │   │   ├── letsencrypt-http01.yaml
-│   │   │   └── wildcard-cert.yaml
-│   │   ├── external-secrets/        # External Secrets + AWS SecretsManager
-│   │   │   ├── aws-secret-store.yaml    # ClusterSecretStore (AWS SM)
-│   │   │   ├── jwt-external-secret.yaml # JWT → K8s Secret
-│   │   │   ├── kustomization.yaml
-│   │   │   ├── nfs-external-secret.yaml # NFS credentials
-│   │   │   ├── quickwit-external-secret.yaml  # Quickwit credentials
-│   │   │   └── registry-external-secret.yaml  # Registry creds → K8s Secret
-│   │   └── quickwit/                # Quickwit index bootstrap (namespace: logging)
-│   │       ├── kustomization.yaml
-│   │       ├── quickwit-cm.yaml         # ConfigMap: syslogs index schema
-│   │       └── job-create-index.yaml    # Job: create `syslogs` index (idempotent)
-│   │   
-│   ├── controllers/                 # Base controllers (no infra-configs Secret dependency)
-│   │   ├── kustomization.yaml       # Aggregates: logging, networking, observability, security
-│   │   ├── logging/                 # Namespace only (log pipeline HRs → services/logging)
-│   │   │   ├── kustomization.yaml
-│   │   │   ├── namespace.yaml
-│   │   │   └── otel-config.yaml         # OTel Collector (alternative)
-│   │   ├── networking/              # Namespace only (NFS HR → services/networking)
-│   │   │   ├── kustomization.yaml
-│   │   │   └── namespace.yaml
-│   │   ├── observability/           # Monitoring
-│   │   │   ├── kustomization.yaml   # Imports flux-operator install.yaml (URL) + flux-web.yaml
-│   │   │   ├── observability.yaml   # Namespace
-│   │   │   ├── flux-web.yaml        # Flux Web ResourceSet (flux-operator chart, ns: flux-system)
-│   │   │   ├── prometheus/          # Istio Prometheus addon (istio-system)
-│   │   │   ├── grafana/             # Istio Grafana addon + Quickwit datasource (istio-system)
-│   │   │   └── kiali/               # Istio Kiali addon
-│   │   └── security/                # Security controllers (namespace: security)
-│   │       ├── kustomization.yaml
-│   │       ├── namespace.yaml
-│   │       ├── cert-manager.yaml    # HelmRepository (jetstack OCI) + HelmRelease
-│   │       ├── external-secrets.yaml # HelmRelease (external-secrets.io, AWS SM auth via awssm-secret)
-│   │       └── kyverno.yaml         # HelmRepository + HelmRelease (Kyverno policy engine)
-│   └── services/                    # Secret-dependent pipeline/storage (Kustomization: infra-services)
-│       ├── kustomization.yaml       # Aggregates: logging, networking
-│       ├── logging/                 # Log pipeline (namespace: logging)
-│       │   ├── kustomization.yaml   # Patches Vector Service → NodePort 30514 (TCP) / 30515 (UDP)
-│       │   ├── vector.yaml          # HelmRepository (helm.vector.dev) + HelmRelease (dependsOn quickwit)
-│       │   └── quickwit.yaml        # HelmRepository (helm.quickwit.io) + HelmRelease (valuesFrom: S3 secret)
-│       └── networking/              # Storage (namespace: networking)
-│           ├── kustomization.yaml
-│           └── nfs-subdir-external-provisioner.yaml
-│
-├── scripts/
-│   └── validate.sh                  # flux-schema validation (YAML + kustomize + helm)
-│
-├── awssm-secret.yaml                # Secret: AWS keys for External Secrets (ns: security)
-├── limitrange.yaml                  # LimitRange `cpu-defaults` (7 namespaces)
-├── require-requests.yaml            # Kyverno ClusterPolicy: default resource requests/limits
-├── .gitignore
-└── README.md
+│   ├── staging/
+│   │   ├── flux-system/       # Flux bootstrap (gotk-components + gotk-sync)
+│   │   ├── image-automation/  # ImageRepository + ImagePolicy + ImageUpdateAutomation
+│   │   ├── apps.yaml
+│   │   ├── infrastructure.yaml
+│   │   └── artifacts.yaml
+│   └── production/            # Same structure, different path
+├── infrastructure/
+│   ├── controllers/           # Helm-managed: cert-manager, external-secrets, kyverno, flux-web
+│   ├── configs/               # Plain YAML: issuers, external secrets, kyverno policies
+│   └── services/              # Secret-dependent: vector, quickwit, nfs
+└── scripts/validate.sh        # flux-schema validation
 ```
+
+### What's Where
+
+| Layer | Path | Contains |
+|-------|------|----------|
+| Base controllers | `infrastructure/controllers/` | cert-manager, external-secrets, kyverno (Helm), flux-web, namespaces, Istio addons (Prometheus, Grafana, Kiali) |
+| Configs | `infrastructure/configs/` | ClusterIssuer, ExternalSecrets, Kyverno policy, Quickwit index job |
+| Services | `infrastructure/services/` | Vector, Quickwit, NFS provisioner (HelmReleases with `valuesFrom` secrets) |
+| App | `apps/base/` | Deployments, Services, Gateway, HTTPRoute, TLS cert, ContainerLimits, ExternalSecrets for app |
+| Per-env | `clusters/<env>/` | Flux bootstrap + Kustomizations + Image Automation |
 
 ---
 
-## Flux CD Resources
-
-### Sources
-
-| Kind | Name | Namespace | Purpose |
-|------|------|-----------|---------|
-| `GitRepository` | `flux-system` | `flux-system` | Points to this repo (main branch) |
-| `ArtifactGenerator` | `flux-system` | `flux-system` | Packages `infrastructure/**` and `apps/**` into artifacts |
-| `HelmRepository` | `jetstack` | `security` | cert-manager OCI charts (`quay.io/jetstack/charts`) |
-| `HelmRepository` | `external-secrets` | `security` | External Secrets charts (`charts.external-secrets.io`) |
-| `HelmRepository` | `vector-repo` | `logging` | Vector charts (`helm.vector.dev`) |
-| `HelmRepository` | `quickwit-repo` | `logging` | Quickwit charts (`helm.quickwit.io`) |
-| `HelmRepository` | `nfs-subdir-external-provisioner` | `networking` | NFS provisioner (`kubernetes-sigs.github.io`) |
-| `OCIRepository` | (created by `ResourceSet` `flux-web`) | `flux-system` | flux-operator chart (`ghcr.io/controlplaneio-fluxcd/charts/flux-operator`) |
-| `HelmRepository` | `kyverno` | `security` | Kyverno charts (`kyverno.github.io/kyverno`) |
-
-### Artifacts (via ArtifactGenerator)
-
-| Artifact | Source | Contains |
-|----------|--------|----------|
-| `infrastructure` | `@monorepo/infrastructure/**` | Controllers + configs manifests |
-| `apps` | `@monorepo/apps/base/**` + `@monorepo/apps/staging/**` | Application manifests |
+## Flux Resources
 
 ### Kustomizations (apply order)
 
-| # | Name | Source | Path | Purpose |
-|---|------|--------|------|---------|
-| 1 | `flux-system` | `GitRepository` | `./clusters/staging` | Bootstrap Flux + ArtifactGenerator |
-| 2 | `infra-controllers` | `ExternalArtifact` | `./controllers` | Base HelmReleases: cert-manager, external-secrets, kyverno, flux-web (flux-operator) + all namespaces (`wait: true`) |
-| 3 | `infra-configs` | `ExternalArtifact` | `./configs` | ClusterIssuers, ExternalSecrets, Quickwit index Job (`dependsOn: infra-controllers`) |
-| 4 | `infra-services` | `ExternalArtifact` | `./services` | HelmReleases: vector, quickwit, nfs-subdir-external-provisioner (`dependsOn: infra-configs`, `wait: true`) |
-| 5 | `apps` | `ExternalArtifact` | `./staging` | App deployments + overlays (`dependsOn: infra-services`) |
-| 6 | `image-automation` | `GitRepository` | `./clusters/staging/image-automation` | ImageRepository + ImagePolicy + ImageUpdateAutomation |
+| # | Name | Applies | Depends On |
+|---|------|---------|------------|
+| 1 | `flux-system` | `clusters/staging` (or `production`) | — |
+| 2 | `infra-controllers` | `infrastructure/controllers` | flux-system |
+| 3 | `infra-configs` | `infrastructure/configs` | infra-controllers |
+| 4 | `infra-services` | `infrastructure/services` | infra-configs |
+| 5 | `apps` | `apps/staging` (or `production`) | infra-services |
+| 6 | `image-automation` | `clusters/<env>/image-automation` | — |
 
 ### HelmReleases
 
-| Name | Namespace | Chart | Source | Notes |
-|------|-----------|-------|--------|-------|
-| `cert-manager` | `security` | `cert-manager` (jetstack OCI) | `jetstack` | `installCRDs: true` |
-| `external-secrets` | `security` | `external-secrets` | `external-secrets` | `crds: Create`, AWS auth via `awssm-secret` |
-| `vector` | `logging` | `vector` | `vector-repo` (helm.vector.dev) | Agent mode, syslog (NodePort 30514/30515) + k8s → Quickwit (`dependsOn: quickwit`) |
-| `quickwit` | `logging` | `quickwit` | `quickwit-repo` (helm.quickwit.io) | `valuesFrom: quickwit-s3-secret-values` |
-| `nfs-subdir-external-provisioner` | `networking` | `nfs-subdir-external-provisioner` | `nfs-subdir-external-provisioner` | `valuesFrom: nfs-provisioner-secret-values` |
-| `flux-web` | `flux-system` | `flux-operator` (OCI) | `OCIRepository` (`ghcr.io/controlplaneio-fluxcd/charts/flux-operator`) | `releaseName: flux-web`, `installCRDs: false`, `web.serverOnly: true`, SA `flux-operator` |
-| `kyverno` | `security` | `kyverno` | `kyverno` | Policy engine (applies `require-requests.yaml`) |
+| Release | Namespace | What It Does |
+|---------|-----------|--------------|
+| `cert-manager` | `security` | TLS cert automation (self-signed CA) |
+| `external-secrets` | `security` | Syncs AWS SecretsManager → K8s Secrets |
+| `kyverno` | `security` | Policy engine (enforces resource requests) |
+| `flux-web` | `flux-system` | GitOps dashboard (server-only, no admin creds) |
+| `vector` | `logging` | Ships k8s logs + syslog → Quickwit |
+| `quickwit` | `logging` | Log store (S3-backed, via ExternalSecret) |
+| `nfs-subdir-external-provisioner` | `networking` | NFS StorageClass (RWX PVCs) |
 
-### Image Automation (ImageUpdateAutomation)
+### External Secrets (AWS SecretsManager → K8s)
 
-| Name | Image | Policy | Update Path | Strategy |
-|------|-------|--------|-------------|----------|
-| `backend` | `ghcr.io/traipoap/backend` | semver `>=0.0.0` | `./apps/staging` | Setters |
-| `frontend` | `ghcr.io/traipoap/frontend` | semver `>=0.0.0` | `./apps/staging` | Setters |
+| Secret | Used For |
+|--------|----------|
+| `jwt-secret` | Backend JWT signing |
+| `github-registry` | GHCR image pull (dockerconfigjson) |
+| `nfs-provisioner-secret-values` | NFS server endpoint (Helm values) |
+| `quickwit-s3-secret-values` | Quickwit S3 storage creds (Helm values) |
 
-> CRs live in `clusters/staging/image-automation/` (namespace: `<env>`). Flux auto-updates image tags in `apps/staging/` and commits as `fluxcdbot`.
+> Nothing sensitive is stored in Git. All credentials come from AWS SecretsManager at runtime.
 
-### External Secrets
+### Image Automation
 
-| Kind | Name | AWS SM Key | K8s Secret | Purpose |
-|------|------|-----------|------------|---------|
-| `ClusterSecretStore` | `secretstore-aws` | region: `ap-southeast-2` | — | Provider config (auth via `awssm-secret`) |
-| `ExternalSecret` | `backend-jwt-secret` | `dev/backend/jwt` → `JWT_SECRET` | `jwt-secret` | JWT for backend |
-| `ExternalSecret` | `github-registry-secret` | `dev/github-registry/frontend-backend` | `github-registry` (dockerconfigjson) | GHCR image pull creds |
-| `ExternalSecret` | `nfs-provisioner-values` | `dev/nfs/config` → `SERVER`, `PATH` | `nfs-provisioner-secret-values` (values.yaml) | NFS server endpoint |
-| `ExternalSecret` | `quickwit-s3-values` | `dev/<env>/quickwit/s3` → `access_key_id`, `secret_access_key`, `endpoint` | `quickwit-s3-secret-values` (values.yaml) | Quickwit S3/Garage storage |
+| Image | Policy | Updates |
+|-------|--------|---------|
+| `ghcr.io/traipoap/backend` | semver `>=0.0.0` | `apps/staging/kustomization.yaml` |
+| `ghcr.io/traipoap/frontend` | semver `>=0.0.0` | `apps/staging/kustomization.yaml` |
 
-> Flux Web (flux-operator) runs with `web.serverOnly: true` — no admin credentials or secret values required.
+Strategy: **Setters** — Flux rewrites the `newTag` value in the kustomization, commits, and the next reconcile deploys the new image.
 
-### Security & Cost Optimization
+### Security
 
-| Kind | Name | Location | Scope | Purpose |
-|------|------|----------|-------|---------|
-| `LimitRange` | `cpu-defaults` (×7) | `./limitrange.yaml` | All 7 namespaces | Default CPU requests/limits per container |
-| `ClusterPolicy` (Kyverno) | `set-default-resource-requests` | `./require-requests.yaml` | Cluster-wide | Mutate Pods: inject `resources.requests/limits` if missing |
-
-> Kyverno itself is installed via the HelmRelease in `controllers/security/kyverno.yaml`.
-
-**LimitRange defaults:**
-
-| Namespace | Default Request | Default Limit |
-|-----------|----------------|---------------|
-| `istio-system` | 50m | 500m |
-| All others (`cert-manager`, `external-secrets`, `flux-system`, `kube-system`, `<env>`, `nfs`) | 10m | 100m |
-
-**Kyverno mutation (applies to all Pods without explicit resource specs):**
-```
-requests: cpu=10m, memory=1Mi
-limits:   cpu=200m, memory=450Mi
-```
+| Tool | What It Does |
+|------|--------------|
+| Kyverno (`require-pod-resources`) | Rejects Pods without CPU/memory requests |
+| LimitRange (`container-limits.yaml`) | Default CPU limits per namespace |
+| Container securityContext | `runAsNonRoot`, `drop: ALL` capabilities, no privilege escalation |
 
 ---
 
 ## Application
 
-### Layout
-
 ```
-apps/base/         ← shared manifests (deployments, services, gateway)
-apps/staging/      ← staging overlay (kustomize patches, image tags)
-apps/production/   ← production overlay (kustomize patches, image tags)
-                     └── each kustomization.yaml extends ../base
+frontend (Astro, :4321)  ←  Gateway (:443 TLS)  ←  Cloudflare
+backend (Go API, :8080)  ←  HTTPRoute
 ```
 
-### Routing
-
-```
-app.example.com
-  ├── /*                  → frontend-svc:4321   (Astro static site)
-  ├── /api/auth/login     → backend-svc:8080    (auth)
-  ├── /api/auth/refresh   → backend-svc:8080    (token refresh)
-  ├── /api/indices        → backend-svc:8080    (index management)
-  ├── /api/search         → backend-svc:8080    (log search)
-  ├── /api/export         → backend-svc:8080    (log export)
-  └── /api/exports        → backend-svc:8080    (export list)
-```
-
-### TLS
-
-- **Gateway** terminates TLS on port 443
-- **ClusterIssuer**: `cluster-ca` (self-signed CA)
-- Certificate: `app-example-com-tls`
-- Gateway API class: `istio`
-
-### Secrets (via External Secrets)
-
-- **JWT_SECRET**: AWS SM (`dev/backend/jwt`) → K8s Secret `jwt-secret` → env var on backend
-- **Registry credentials**: AWS SM (`dev/github-registry/frontend-backend`) → K8s Secret `github-registry` (dockerconfigjson template) → `imagePullSecrets`
-- **Flux Web (flux-operator)**: no admin credentials — deployed with `web.serverOnly: true`
+- **TLS**: Istio Gateway terminates TLS. Cert issued by cert-manager (self-signed CA).
+- **Routing**: `/*` → frontend, `/api/*` → backend (via HTTPRoute).
+- **Storage**: NFS PVCs for backend exports + data (RWX).
 
 ---
 
 ## Observability
 
-| Component | Namespace | Access |
-|-----------|-----------|--------|
-| Prometheus | `istio-system` | `kubectl -n istio-system port-forward svc/prometheus-server 9090:9090` |
-| Grafana | `istio-system` | `kubectl -n istio-system port-forward svc/grafana 3000:3000` |
-| Kiali | `istio-system` | `kubectl -n istio-system port-forward svc/kiali 20001:20001` |
-| Quickwit | `logging` | `kubectl -n logging port-forward svc/quickwit-searcher 7280:7280` |
-| Vector | `logging` | syslog NodePort: `30514` (TCP) / `30515` (UDP) |
-| Flux Web | `flux-system` | `kubectl -n flux-system port-forward svc/flux-web 8080:8080` |
+| Tool | Namespace | What |
+|------|-----------|------|
+| Prometheus | `istio-system` | Metrics (Istio addon) |
+| Grafana | `istio-system` | Dashboards + Quickwit log datasource |
+| Kiali | `istio-system` | Service mesh topology |
+| Quickwit | `logging` | Log search (S3-backed) |
+| Vector | `logging` | Log shipper (k8s + syslog → Quickwit) |
+| Flux Web | `flux-system` | GitOps dashboard |
 
-### Logging Pipeline
-
-```
-Pod logs ──► Vector (k8s_logs + syslog) ──► Quickwit (HTTP sink)
-                                                    │
-                                                    ▼
-                                            Grafana (Quickwit datasource)
-```
-
-### Image Automation Flow
-
-```
-ghcr.io/traipoap/backend:0.0.47 pushed
-    │
-    ▼
-ImageRepository (poll every 5m, namespace: <env>)
-    │
-    ▼
-ImagePolicy (semver: pick highest ≥ 0.0.0)
-    │
-    ▼
-ImageUpdateAutomation (Setters strategy)
-    │  └─ updates kustomize `images` field in apps/staging/kustomization.yaml
-    │     commit as fluxcdbot → push to main
-    │
-    ▼
-Flux Kustomization: apps (detects diff → deploys new image)
-```
-
-**Setters mechanism:** Flux updates the `newTag` in `apps/staging/kustomization.yaml`:
-```yaml
-images:
-  - name: ghcr.io/traipoap/backend
-    newTag: "0.0.47"  # ← Flux auto-updates this value
-  - name: ghcr.io/traipoap/frontend
-    newTag: "0.0.28"  # ← Flux auto-updates this value
-```
+**Log flow:** `Pod logs → Vector → Quickwit → Grafana`
 
 ---
 
 ## Quick Start
 
-### Bootstrap Flux
-
 ```bash
-flux bootstrap github \
-  --owner=traipoap \
-  --repository=fleet-infra \
-  --branch=main \
-  --path=./clusters/staging \
-  --personal
-```
-
-> `--path` is per cluster: `./clusters/staging` or `./clusters/production`.
-
-### Verify
-
-```bash
+# 1. Bootstrap Flux (per cluster)
+  flux bootstrap github \
+    --components-extra=image-reflector-controller,image-automation-controller,source-watcher \
+    --owner=traipoap --repository=gitops --branch=main \
+    --path=./clusters/staging --read-write-key --personal
+    
+# 2. Check status
 flux get all -A
-kubectl get kustomization -n flux-system
-kubectl get helmrelease -A
-kubectl get artifacts -n flux-system
-kubectl get imageautomations -n <env>
-kubectl get externalsecrets -n <env>
 kubectl get pods -A
+
+# 3. Validate manifests locally
+./scripts/validate.sh          # YAML + kustomize
+./scripts/validate.sh -H       # + Helm rendering
 ```
-
-### Force Reconcile
-
-```bash
-flux reconcile kustomization flux-system -n flux-system --with-source
-flux reconcile kustomization infra-controllers -n flux-system --with-source
-flux reconcile kustomization apps -n flux-system --with-source
-flux reconcile kustomization image-automation -n flux-system --with-source
-```
-
-### Validate Manifests
-
-Uses **flux-schema** (Flux Schema plugin) with the [Flux Ecosystem Catalog](https://schemas.fluxoperator.dev/):
-
-```bash
-# Validate all YAML + kustomize overlays
-./scripts/validate.sh
-
-# Include Helm chart rendering
-./scripts/validate.sh -H
-
-# Custom directory + output bundle
-./scripts/validate.sh -d ./infrastructure -b /tmp/bundle.yaml
-
-# Exclude specific dirs
-./scripts/validate.sh -e .scannerwork
-```
-
-**Validates:** Standalone YAML, Kustomize overlays, Helm charts (optional `-H`)
-**Prerequisites:** `flux-schema` ≥ 0.9, `kustomize`/`kubectl`, `helm` ≥ 4.0 (for `-H`)
 
 ---
 
 ## Environments
 
-| Env | Cluster bootstrap | App overlay | Image Automation |
-|-----|-------------------|-------------|------------------|
-| `staging` | `clusters/staging/` | `apps/staging/` | `clusters/staging/image-automation/` |
-| `production` | `clusters/production/` | `apps/production/` | `clusters/production/image-automation/` |
+| Env | Bootstrap Path | App Overlay | Image Automation |
+|-----|---------------|-------------|------------------|
+| staging | `clusters/staging/` | `apps/staging/` | ✅ (auto-updates) |
+| production | `clusters/production/` | `apps/production/` | ✅ (auto-updates) |
 
-Each cluster has its own `flux-system/` bootstrap + Kustomizations. Shared manifests live in `apps/base/`.
-
-### Adding a New Environment
-
-To deploy to another cluster (e.g., `qa`):
+### Add a New Environment
 
 ```bash
-# 1. Create the cluster bootstrap
-cp -r clusters/staging clusters/qa
-# Update gotk-sync.yaml path → ./clusters/qa
-# Update image-automation: Kustomization path → ./clusters/qa/image-automation,
-# and ImageUpdateAutomation update.path → ./apps/qa
-
-# 2. Create the env overlay
-cp -r apps/staging apps/qa
-# Add kustomize patches (replicas, resources, env-specific config)
-
-# 3. Update ArtifactGenerator to include the new env
-# clusters/qa/artifacts.yaml → add apps/qa/**
-
-# 4. Bootstrap Flux on the new cluster
-flux bootstrap github \
-  --owner=traipoap \
-  --repository=fleet-infra \
-  --branch=main \
-  --path=./clusters/qa \
-  --personal
+cp -r clusters/staging clusters/<new-env>   # update paths in gotk-sync.yaml
+cp -r apps/staging apps/<new-env>           # add env-specific patches
+# update artifacts.yaml to include apps/<new-env>/**
+flux bootstrap github ... --path=./clusters/<new-env>
 ```
 
 ---
 
-## Maintenance Checklist
+## Roadmap
 
-- [x] Pin Helm chart versions (currently using `>=` ranges)
-- [ ] Add PodDisruptionBudgets for stateful components (Quickwit, Vector)
-- [ ] Add NetworkPolicies for namespace isolation
-- [ ] Configure Flux alerts (Slack/Email) via `Alert` resources
-- [x] Add Kyverno/OPA policies for security enforcement
-- [ ] Multi-environment promotion (staging → production)
-- [ ] Add Velero backup for etcd + PVCs
-- [x] Add image vulnerability scanning in CI pipeline
+- [ ] Multi-env promotion (staging → production) with gate
+- [ ] Alerting rules + SLOs (Prometheus Alertmanager)
+- [ ] NetworkPolicies (default-deny)
+- [ ] Velero backup + restore runbook
+- [ ] Canary deployments (Flagger or Istio VirtualService)
+- [ ] cosign image signing + Flux verification
