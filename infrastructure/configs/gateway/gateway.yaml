@@ -18,6 +18,22 @@ spec:
       namespaces:
         from: "All"
 
+  - name: http-grafana
+    protocol: HTTP
+    port: 80
+    hostname: "grafana.traipoap.com"
+    allowedRoutes:
+      namespaces:
+        from: "All"
+
+  - name: http-kiali
+    protocol: HTTP
+    port: 80
+    hostname: "kiali.traipoap.com"
+    allowedRoutes:
+      namespaces:
+        from: "All"
+
   - name: http-app
     protocol: HTTP
     port: 80
