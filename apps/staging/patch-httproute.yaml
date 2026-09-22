@@ -5,6 +5,7 @@ metadata:
 spec:
   parentRefs:
   - name: app-gateway
+    namespace: istio-system
   hostnames:
   - "app.traipoap.com"
   rules:
