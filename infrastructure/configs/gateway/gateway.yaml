@@ -2,7 +2,7 @@ apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
   name: app-gateway
-  namespace: flux-system
+  namespace: istio-system
   annotations:
     # Name ref: value must be the name of a ClusterIssuer.
     # The CA issuer is named "cluster-ca-issuer" (infrastructure/configs/cert-manager/ca-issuer.yaml);
