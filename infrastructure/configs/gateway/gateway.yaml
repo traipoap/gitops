@@ -1,0 +1,45 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: app-gateway
+  annotations:
+    # Name ref: value must be the name of a ClusterIssuer.
+    # The CA issuer is named "cluster-ca-issuer" (infrastructure/configs/cert-manager/ca-issuer.yaml);
+    cert-manager.io/cluster-issuer: "cluster-ca-issuer"
+spec:
+  gatewayClassName: istio
+  listeners:
+  - name: http
+    protocol: HTTP
+    port: 9080
+    hostname: "flux-web.traipoap.com"
+    allowedRoutes:
+      namespaces:
+        from: "flux-system"
+
+  - name: http
+    protocol: HTTP
+    port: 80
+    hostname: "app.traipoap.com"
+    allowedRoutes:
+      namespaces:
+        from:
+          - staging
+          - production
+
+  - name: https
+    protocol: HTTPS
+    port: 443
+    hostname: "app.traipoap.com"
+    tls:
+      mode: Terminate
+      # Name ref: name of the Secret holding the TLS certificate (Gateway's namespace).
+      # Should match spec.secretName in frontend-tls.yaml ("app-traipoap-com-tls").
+      certificateRefs:
+      - name: app-traipoap-com-tls
+        kind: Secret
+    allowedRoutes:
+      namespaces:
+        from:
+          - staging
+          - production
