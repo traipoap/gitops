@@ -2,6 +2,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: frontend-tls
+  namespace: istio-system
 spec:
   # Name ref: overrides the base secretName with the staging domain's Secret.
   # patch-gateway.yaml's tls.certificateRefs must reference this Secret name
