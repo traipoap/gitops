@@ -10,7 +10,6 @@ images:
 
 patches:
   - path: patch-cert.yaml
-  - path: patch-gateway.yaml
   - path: patch-config.yaml
   - path: patch-httproute.yaml
 

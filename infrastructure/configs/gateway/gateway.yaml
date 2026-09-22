@@ -17,3 +17,26 @@ spec:
     allowedRoutes:
       namespaces:
         from: "All"
+
+  - name: http
+    protocol: HTTP
+    port: 80
+    hostname: "app.traipoap.com"
+    allowedRoutes:
+      namespaces:
+        from: "All"
+
+  - name: https
+    protocol: HTTPS
+    port: 443
+    hostname: "app.traipoap.com"
+    tls:
+      mode: Terminate
+      # Name ref: name of the Secret holding the TLS certificate (Gateway's namespace).
+      # Should match spec.secretName in patch-cert.yaml ("app-traipoap-com-tls").
+      certificateRefs:
+      - name: app-traipoap-com-tls
+        kind: Secret
+    allowedRoutes:
+      namespaces:
+        from: All
