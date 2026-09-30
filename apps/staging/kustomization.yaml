@@ -4,12 +4,10 @@ resources:
   - ../base
 images:
   - name: ghcr.io/traipoap/backend
-    newTag: "0.0.23" # {"$imagepolicy": "staging:backend:tag"}
+    newTag: "0.0.28" # {"$imagepolicy": "staging:backend:tag"}
   - name: ghcr.io/traipoap/frontend
     newTag: "0.0.27" # {"$imagepolicy": "staging:frontend:tag"}
-
 patches:
   - path: patch-config.yaml
   - path: patch-httproute.yaml
-
 namespace: staging
