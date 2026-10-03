@@ -1,0 +1,32 @@
+# แก้ปัญหานี้:
+#   nginx: [emerg] mkdir() "/var/cache/nginx/client_temp" failed (13: Permission denied)
+# frontend เป็น nginx image ที่รันแบบ non-root (runAsUser: 10001)
+# ทำให้เขียนไดเร็คทอรี root-owned ใน image ไม่ได้
+# วิธีแก้: mount emptyDir ที่ path ที่ nginx ต้องเขียน + ให้กลุ่ม 10001 มีสิทธิ์เขียน (fsGroup/runAsGroup)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  template:
+    spec:
+      securityContext:
+        fsGroup: 10001
+      containers:
+        - name: frontend
+          securityContext:
+            runAsGroup: 10001
+          volumeMounts:
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-log
+              mountPath: /var/log/nginx
+            - name: nginx-run
+              mountPath: /var/run
+      volumes:
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-log
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}

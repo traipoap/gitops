@@ -10,4 +10,5 @@ images:
 patches:
   - path: patch-config.yaml
   - path: patch-httproute.yaml
+  - path: patch-frontend-nginx.yaml
 namespace: staging
