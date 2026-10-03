@@ -10,6 +10,6 @@ spec:
     - port: 4321
       targetPort: 4321
       protocol: TCP
-      name: http
+      name: http-4321
   selector:
     app: frontend
