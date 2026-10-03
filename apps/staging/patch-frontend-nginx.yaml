@@ -24,7 +24,7 @@ spec:
             - name: nginx-run
               mountPath: /var/run
             - name: nginx-conf
-              mountPath: /etc/nginx/nginx.conf
+              mountPath: /etc/nginx
       volumes:
         - name: nginx-cache
           emptyDir: {}
