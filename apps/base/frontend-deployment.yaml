@@ -23,7 +23,7 @@ spec:
         - name: frontend
           image: ghcr.io/traipoap/frontend:0.0.25
           ports:
-            - name: http
+            - name: http-4321
               containerPort: 4321
               protocol: TCP
           envFrom:
@@ -33,7 +33,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /
-              port: http
+              port: http-4321
             initialDelaySeconds: 10
             periodSeconds: 15
           readinessProbe:
