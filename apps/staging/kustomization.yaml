@@ -4,7 +4,7 @@ resources:
   - ../base
 images:
   - name: ghcr.io/traipoap/backend
-    newTag: "0.0.32" # {"$imagepolicy": "staging:backend:tag"}
+    newTag: "0.0.39" # {"$imagepolicy": "staging:backend:tag"}
   - name: ghcr.io/traipoap/frontend
     newTag: "0.0.27" # {"$imagepolicy": "staging:frontend:tag"}
 patches:
