@@ -15,5 +15,5 @@ spec:
         type: PathPrefix
         value: /
     backendRefs:
-    - name: quickwit
+    - name: quickwit-searcher
       port: 7280
