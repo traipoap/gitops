@@ -23,10 +23,14 @@ spec:
               mountPath: /var/log/nginx
             - name: nginx-run
               mountPath: /var/run
+            - name: nginx-conf
+              mountPath: /etc/nginx/nginx.conf
       volumes:
         - name: nginx-cache
           emptyDir: {}
         - name: nginx-log
           emptyDir: {}
         - name: nginx-run
+          emptyDir: {}
+        - name: nginx-conf
           emptyDir: {}
