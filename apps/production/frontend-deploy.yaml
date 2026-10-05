@@ -15,16 +15,18 @@ spec:
         app: frontend
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "4321"
+        prometheus.io/port: "80"
     spec:
+      securityContext:
+        fsGroup: 10001
       imagePullSecrets:
         - name: github-registry
       containers:
         - name: frontend
           image: ghcr.io/traipoap/frontend:0.0.25
           ports:
-            - name: http-4321
-              containerPort: 4321
+            - name: http
+              containerPort: 80
               protocol: TCP
           envFrom:
             - configMapRef:
@@ -33,7 +35,7 @@ spec:
           livenessProbe:
             httpGet:
               path: /
-              port: http-4321
+              port: http
             initialDelaySeconds: 10
             periodSeconds: 15
           readinessProbe:
@@ -49,3 +51,17 @@ spec:
             #readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+          volumeMounts:
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-log
+              mountPath: /var/log/nginx
+            - name: nginx-run
+              mountPath: /var/run
+      volumes:
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-log
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
