@@ -8,7 +8,7 @@ images:
   - name: ghcr.io/traipoap/backend
     newTag: "0.0.54" # {"$imagepolicy": "staging:backend:tag"}
   - name: ghcr.io/traipoap/frontend
-    newTag: "0.0.55" # {"$imagepolicy": "staging:frontend:tag"}
+    newTag: "0.0.56" # {"$imagepolicy": "staging:frontend:tag"}
 patches:
   - path: patch-config.yaml
   - path: patch-httproute.yaml
