@@ -24,9 +24,7 @@ spec:
       sourceRef:
         kind: HelmRepository
         name: vector-repo
-
   interval: 1m0s
-
   values:
     customConfig:
       api:
@@ -79,6 +77,7 @@ spec:
             # 3. ลบตัวแปรชั่วคราวออก
             del(.vector_time_utc)
           type: remap
+
     role: Agent
     service:
       enabled: true
