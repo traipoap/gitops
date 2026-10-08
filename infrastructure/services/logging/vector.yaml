@@ -101,3 +101,14 @@ spec:
     service:
       enabled: true
       type: "NodePort"
+      ports:
+        - name: syslog-tcp
+          port: 514
+          targetPort: 514
+          protocol: TCP
+          nodePort: 30514
+        - name: syslog-udp
+          port: 514
+          targetPort: 514
+          protocol: UDP
+          nodePort: 30515
