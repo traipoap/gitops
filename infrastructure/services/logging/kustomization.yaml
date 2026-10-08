@@ -9,6 +9,7 @@ patches:
 - target:
     kind: Service
     name: vector
+    namespace: logging
   patch: |-
     apiVersion: v1
     kind: Service
