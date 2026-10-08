@@ -36,20 +36,17 @@ spec:
       log_schema:
         host_key: host
       sinks:
-        quickwit_logs:
+        quickwit_syslogs:
           encoding:
             codec: json
           framing:
             method: newline_delimited
           inputs:
-          - filter_app_logs
-          - filter_syslogs
+          - vector_timestamp
           method: post
           type: http
           uri: http://quickwit-searcher:7280/api/v1/syslogs/ingest
       sources:
-        kubernetes_logs:
-          type: kubernetes_logs
         syslog_tcp:
           address: 0.0.0.0:514
           decoding:
@@ -69,7 +66,6 @@ spec:
           inputs:
           - syslog_tcp
           - syslog_udp
-          - kubernetes_logs
           source: |
             # 1. ใช้เวลาที่ Vector รับ log (UTC)
             .vector_time_utc = now()
@@ -83,20 +79,6 @@ spec:
             # 3. ลบตัวแปรชั่วคราวออก
             del(.vector_time_utc)
           type: remap
-
-        filter_app_logs:
-          inputs:
-          - vector_timestamp
-          type: filter
-          condition: |
-            (.kubernetes.pod_labels.app == "frontend") ||
-            (.kubernetes.pod_labels.app == "backend")
-        filter_syslogs:
-          inputs:
-          - vector_timestamp
-          type: filter
-          condition: |
-            (.appname == "generator")
     role: Agent
     service:
       enabled: true
