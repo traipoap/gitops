@@ -93,3 +93,6 @@ spec:
           targetPort: 514
           protocol: UDP
           nodePort: 30515
+          serviceHeadless:
+    serviceHeadless:
+      enabled: false
