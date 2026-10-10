@@ -7,7 +7,7 @@ spec:
   - name: app-gateway
     namespace: istio-system
   hostnames:
-  - "app.traipoap.com"
+  - "k3s-origin.traipoap.com"
   rules:
   - matches:
     - path:

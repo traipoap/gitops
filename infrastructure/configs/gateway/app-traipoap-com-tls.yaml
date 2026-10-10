@@ -6,7 +6,7 @@ metadata:
 spec:
   secretName: app-traipoap-com-tls
   dnsNames:
-  - "app.traipoap.com"
+  - "k3s-origin.traipoap.com"
   issuerRef:
     name: cluster-ca-issuer
     kind: ClusterIssuer

@@ -4,7 +4,7 @@ metadata:
   name: app-config
 data:
   # Frontend configuration
-  ALLOWED_HOSTS: "app.traipoap.com,.traipoap.com"
+  ALLOWED_HOSTS: "k3s-origin.traipoap.com,.traipoap.com"
 
   # Backend configuration
-  CORS_ORIGINS: "https://app.traipoap.com"
+  CORS_ORIGINS: "https://k3s-origin.traipoap.com"
