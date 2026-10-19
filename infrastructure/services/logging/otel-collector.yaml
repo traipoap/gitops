@@ -11,7 +11,7 @@ spec:
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: opentelemetry-collector
+  name: otel-collector
 spec:
   chart:
     spec:
@@ -20,7 +20,7 @@ spec:
       reconcileStrategy: ChartVersion
       sourceRef:
         kind: HelmRepository
-        name: otel-collector
+        name: open-telemetry
   interval: 1m0s
   values:
     mode: daemonset
