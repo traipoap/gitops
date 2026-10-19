@@ -5,5 +5,5 @@ resources:
   - flux-web-httproute.yaml
   - grafana-httproute.yaml
   - kiali-httproute.yaml
-  - app-traipoap-com-tls.yaml
+#  - app-traipoap-com-tls.yaml
   - quickwit-httproute.yaml
