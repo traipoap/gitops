@@ -4,3 +4,4 @@ namespace: logging
 resources:
 - quickwit.yaml
 - vector.yaml
+- otel-collector.yaml
