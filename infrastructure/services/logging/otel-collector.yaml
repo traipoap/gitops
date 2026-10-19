@@ -2,7 +2,7 @@
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: otel-collector
+  name: open-telemetry
 spec:
   interval: 1m0s
   timeout: 3m0s
@@ -15,7 +15,8 @@ metadata:
 spec:
   chart:
     spec:
-      chart: otel-collector
+      chart: opentelemetry-collector
+      version: ">0.176.0"
       reconcileStrategy: ChartVersion
       sourceRef:
         kind: HelmRepository
