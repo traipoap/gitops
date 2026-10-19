@@ -16,7 +16,6 @@ spec:
   chart:
     spec:
       chart: opentelemetry-collector
-      version: ">0.176.0"
       reconcileStrategy: ChartVersion
       sourceRef:
         kind: HelmRepository
